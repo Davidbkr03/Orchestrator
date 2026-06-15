@@ -4,7 +4,9 @@ import time
 import uuid
 import json
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+
+from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
@@ -12,6 +14,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(title="Fusion Orchestrator")
+
+app.mount("/ui", StaticFiles(directory="webui", html=True), name="ui")
+
+@app.get("/")
+async def root_redirect():
+    return RedirectResponse(url="/ui/index.html")
 
 # -------------------------------------------------------------------------
 # Direct API clients
@@ -66,6 +74,30 @@ ADVANCED_WORKERS = [
     {"client": deepseek_client, "model": "deepseek-v4-flash"}
 ]
 ADVANCED_JUDGE = {"client": deepseek_client, "model": "deepseek-v4-pro", "thinking": True}
+
+import time as time_module
+SERVER_START_TIME = time_module.time()
+
+@app.get("/api/info")
+async def api_info():
+    return {
+        "normal_workers": [
+            {"provider": "Gemini", "model": "gemini-3.1-flash-lite"},
+            {"provider": "OpenAI", "model": "gpt-5-nano"},
+            {"provider": "DeepSeek", "model": "deepseek-v4-flash"}
+        ],
+        "normal_judge": {"provider": "DeepSeek", "model": "deepseek-v4-flash", "thinking": False},
+        "advanced_workers": [
+            {"provider": "Gemini", "model": "gemini-3.5-flash"},
+            {"provider": "OpenAI", "model": "gpt-5-mini"},
+            {"provider": "DeepSeek", "model": "deepseek-v4-flash"}
+        ],
+        "advanced_judge": {"provider": "DeepSeek", "model": "deepseek-v4-pro", "thinking": True},
+        "server_start_time": SERVER_START_TIME,
+        "uptime_seconds": time_module.time() - SERVER_START_TIME,
+        "server_time": time_module.time(),
+        "routes": ["/v1/normal", "/v1/advanced", "/v1/normal/chat/completions", "/v1/advanced/chat/completions", "/health", "/api/info", "/"]
+    }
 
 # -------------------------------------------------------------------------
 # Request/Response models
@@ -131,6 +163,7 @@ Instructions:
 2. Combine them into a single, coherent, final answer.
 3. Do NOT mention that multiple responses were fused. Present the answer as a unified response.
 4. Ensure the final answer directly addresses the original conversation.
+5. Use tool calling as you normally would, you still decide the final output but with assistance from the other models.
     """
 
     # Step 3: Judge synthesis

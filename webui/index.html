@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fusion Orchestrator Dashboard</title>
+    <link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <h1>🧬 Fusion Orchestrator</h1>
+        <div class="status-indicator">
+            <span class="dot" id="healthDot"></span>
+            <span id="healthText">Checking...</span>
+        </div>
+    </header>
+
+    <div class="dashboard">
+        <!-- Left Panel: Council Config -->
+        <section class="panel panel-config">
+            <h2>⚙️ Council Configuration</h2>
+            <div id="normalCouncil" class="council-card">
+                <h3>Normal Council</h3>
+                <div class="worker-list" id="normalWorkers"></div>
+                <div class="judge-info" id="normalJudge"></div>
+            </div>
+            <div id="advancedCouncil" class="council-card">
+                <h3>Advanced Council</h3>
+                <div class="worker-list" id="advancedWorkers"></div>
+                <div class="judge-info" id="advancedJudge"></div>
+            </div>
+        </section>
+
+        <!-- Center Panel: Test Query -->
+        <section class="panel panel-query">
+            <h2>📝 Test Query</h2>
+            <div class="query-form">
+                <select id="councilSelect">
+                    <option value="normal">Normal Council</option>
+                    <option value="advanced">Advanced Council</option>
+                </select>
+                <input type="text" id="messageInput" placeholder="Type your message..." />
+                <button id="sendBtn">Send</button>
+            </div>
+            <div class="response-area" id="responseArea">
+                <p class="placeholder">Response will appear here...</p>
+            </div>
+        </section>
+
+        <!-- Right Panel: Info -->
+        <section class="panel panel-info">
+            <h2>📊 System Info</h2>
+            <div id="systemInfo">
+                <div class="info-row"><span class="label">Uptime:</span><span id="uptime">--</span></div>
+                <div class="info-row"><span class="label">Active Routes:</span><span id="routes">--</span></div>
+                <div class="info-row"><span class="label">Server Time:</span><span id="serverTime">--</span></div>
+            </div>
+        </section>
+    </div>
+
+    <script src="/ui/app.js"></script>
+</body>
+</html>
