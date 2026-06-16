@@ -3,6 +3,7 @@ import asyncio
 import time
 import uuid
 import json
+from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 
 from fastapi.responses import StreamingResponse, RedirectResponse
@@ -40,7 +41,21 @@ openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY, base_url="https://api.openai
 gemini_client = AsyncOpenAI(api_key=GEMINI_API_KEY, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
 # -------------------------------------------------------------------------
-# Model‑specific token limits
+# Provider -> client mapping
+# -------------------------------------------------------------------------
+PROVIDER_CLIENTS = {
+    "DeepSeek": deepseek_client,
+    "OpenAI": openai_client,
+    "Gemini": gemini_client,
+}
+PROVIDER_BASE_URLS = {
+    "DeepSeek": "https://api.deepseek.com/v1",
+    "OpenAI": "https://api.openai.com/v1",
+    "Gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+}
+
+# -------------------------------------------------------------------------
+# Model-specific token limits
 # -------------------------------------------------------------------------
 MODEL_LIMITS = {
     "deepseek-v4-flash": 256_000,
@@ -56,48 +71,154 @@ def get_max_tokens_for_model(model_name: str, requested: int) -> int:
     return min(requested, limit)
 
 # -------------------------------------------------------------------------
-# Normal Council (all thinking OFF)
+# Mutable council configurations (defaults)
 # -------------------------------------------------------------------------
 NORMAL_WORKERS = [
-    {"client": gemini_client, "model": "gemini-3.1-flash-lite"},
-    {"client": openai_client, "model": "gpt-5-nano"},
-    {"client": deepseek_client, "model": "deepseek-v4-flash"}
+    {"provider": "Gemini", "model": "gemini-3.1-flash-lite"},
+    {"provider": "OpenAI", "model": "gpt-5-nano"},
+    {"provider": "DeepSeek", "model": "deepseek-v4-flash"}
 ]
-NORMAL_JUDGE = {"client": deepseek_client, "model": "deepseek-v4-flash", "thinking": False}
+NORMAL_JUDGE = {"provider": "DeepSeek", "model": "deepseek-v4-flash", "thinking": False}
 
-# -------------------------------------------------------------------------
-# Advanced Council (workers no thinking, judge DeepSeek Pro with thinking)
-# -------------------------------------------------------------------------
 ADVANCED_WORKERS = [
-    {"client": gemini_client, "model": "gemini-3.5-flash"},
-    {"client": openai_client, "model": "gpt-5-mini"},
-    {"client": deepseek_client, "model": "deepseek-v4-flash"}
+    {"provider": "Gemini", "model": "gemini-3.5-flash"},
+    {"provider": "OpenAI", "model": "gpt-5-mini"},
+    {"provider": "DeepSeek", "model": "deepseek-v4-flash"}
 ]
-ADVANCED_JUDGE = {"client": deepseek_client, "model": "deepseek-v4-pro", "thinking": True}
+ADVANCED_JUDGE = {"provider": "DeepSeek", "model": "deepseek-v4-pro", "thinking": True}
 
+# Deep copies of defaults for resetting
+DEFAULT_NORMAL_WORKERS = [w.copy() for w in NORMAL_WORKERS]
+DEFAULT_NORMAL_JUDGE = dict(NORMAL_JUDGE)
+DEFAULT_ADVANCED_WORKERS = [w.copy() for w in ADVANCED_WORKERS]
+DEFAULT_ADVANCED_JUDGE = dict(ADVANCED_JUDGE)
+
+# Helpers to convert config dicts to the runtime structure used by run_council
+def worker_to_runtime(w: dict) -> dict:
+    return {
+        "client": PROVIDER_CLIENTS[w["provider"]],
+        "model": w["model"],
+    }
+
+def judge_to_runtime(j: dict) -> dict:
+    return {
+        "client": PROVIDER_CLIENTS[j["provider"]],
+        "model": j["model"],
+        "thinking": j.get("thinking", False),
+    }
+
+# -------------------------------------------------------------------------
+# Model cache (from API queries)
+# -------------------------------------------------------------------------
+_models_cache = None
+_models_cache_time = 0
+MODEL_CACHE_TTL = 300  # 5 minutes
+
+async def fetch_available_models():
+    """Query each provider's /models endpoint and return a dict."""
+    results = {}
+    for provider, client in PROVIDER_CLIENTS.items():
+        try:
+            resp = await client.models.list()
+            models = [m.id for m in resp.data]
+            results[provider] = sorted(models)
+        except Exception as e:
+            results[provider] = [f"error: {str(e)}"]
+    return results
+
+# -------------------------------------------------------------------------
 import time as time_module
 SERVER_START_TIME = time_module.time()
+
+def serialize_worker(workers: list) -> list:
+    return [{"provider": w["provider"], "model": w["model"]} for w in workers]
+
+def serialize_judge(judge: dict) -> dict:
+    return {
+        "provider": judge["provider"],
+        "model": judge["model"],
+        "thinking": judge.get("thinking", False),
+    }
 
 @app.get("/api/info")
 async def api_info():
     return {
-        "normal_workers": [
-            {"provider": "Gemini", "model": "gemini-3.1-flash-lite"},
-            {"provider": "OpenAI", "model": "gpt-5-nano"},
-            {"provider": "DeepSeek", "model": "deepseek-v4-flash"}
-        ],
-        "normal_judge": {"provider": "DeepSeek", "model": "deepseek-v4-flash", "thinking": False},
-        "advanced_workers": [
-            {"provider": "Gemini", "model": "gemini-3.5-flash"},
-            {"provider": "OpenAI", "model": "gpt-5-mini"},
-            {"provider": "DeepSeek", "model": "deepseek-v4-flash"}
-        ],
-        "advanced_judge": {"provider": "DeepSeek", "model": "deepseek-v4-pro", "thinking": True},
+        "normal_workers": serialize_worker(NORMAL_WORKERS),
+        "normal_judge": serialize_judge(NORMAL_JUDGE),
+        "advanced_workers": serialize_worker(ADVANCED_WORKERS),
+        "advanced_judge": serialize_judge(ADVANCED_JUDGE),
         "server_start_time": SERVER_START_TIME,
         "uptime_seconds": time_module.time() - SERVER_START_TIME,
         "server_time": time_module.time(),
-        "routes": ["/v1/normal", "/v1/advanced", "/v1/normal/chat/completions", "/v1/advanced/chat/completions", "/health", "/api/info", "/"]
+        "routes": ["/v1/normal", "/v1/advanced", "/v1/normal/chat/completions",
+                   "/v1/advanced/chat/completions", "/health", "/api/info",
+                   "/api/models", "/api/swap-models", "/api/reset-models", "/"]
     }
+
+# -------------------------------------------------------------------------
+# Models endpoint
+# -------------------------------------------------------------------------
+@app.get("/api/models")
+async def api_models():
+    global _models_cache, _models_cache_time
+    now = time_module.time()
+    if _models_cache is None or (now - _models_cache_time) > MODEL_CACHE_TTL:
+        _models_cache = await fetch_available_models()
+        _models_cache_time = now
+    return _models_cache
+
+# -------------------------------------------------------------------------
+# Swap models endpoint
+# -------------------------------------------------------------------------
+class SwapModelsRequest(BaseModel):
+    council: str  # "normal" or "advanced"
+    slot_type: str  # "worker" or "judge"
+    slot_index: Optional[int] = None  # index for workers, None for judge
+    provider: str
+    model: str
+    thinking: bool = False
+
+@app.post("/api/swap-models")
+async def swap_models(req: SwapModelsRequest):
+    if req.council not in ("normal", "advanced"):
+        raise HTTPException(400, "Invalid council. Use 'normal' or 'advanced'.")
+
+    if req.slot_type == "worker":
+        if req.slot_index is None:
+            raise HTTPException(400, "slot_index required for worker slots")
+        if req.council == "normal":
+            if req.slot_index < 0 or req.slot_index >= len(NORMAL_WORKERS):
+                raise HTTPException(400, "Invalid worker index")
+            NORMAL_WORKERS[req.slot_index] = {"provider": req.provider, "model": req.model}
+        else:
+            if req.slot_index < 0 or req.slot_index >= len(ADVANCED_WORKERS):
+                raise HTTPException(400, "Invalid worker index")
+            ADVANCED_WORKERS[req.slot_index] = {"provider": req.provider, "model": req.model}
+    elif req.slot_type == "judge":
+        if req.council == "normal":
+            NORMAL_JUDGE["provider"] = req.provider
+            NORMAL_JUDGE["model"] = req.model
+            NORMAL_JUDGE["thinking"] = req.thinking
+        else:
+            ADVANCED_JUDGE["provider"] = req.provider
+            ADVANCED_JUDGE["model"] = req.model
+            ADVANCED_JUDGE["thinking"] = req.thinking
+    else:
+        raise HTTPException(400, "Invalid slot_type. Use 'worker' or 'judge'.")
+
+    return {"status": "ok", "message": f"{req.council} {req.slot_type} updated"}
+
+# -------------------------------------------------------------------------
+# Reset models endpoint
+# -------------------------------------------------------------------------
+@app.post("/api/reset-models")
+async def reset_models():
+    global NORMAL_WORKERS, NORMAL_JUDGE, ADVANCED_WORKERS, ADVANCED_JUDGE
+    NORMAL_WORKERS = [w.copy() for w in DEFAULT_NORMAL_WORKERS]
+    NORMAL_JUDGE = dict(DEFAULT_NORMAL_JUDGE)
+    ADVANCED_WORKERS = [w.copy() for w in DEFAULT_ADVANCED_WORKERS]
+    ADVANCED_JUDGE = dict(DEFAULT_ADVANCED_JUDGE)
+    return {"status": "ok", "message": "Models reset to defaults"}
 
 # -------------------------------------------------------------------------
 # Request/Response models
@@ -143,8 +264,7 @@ async def run_council(workers: list, judge: dict, request: CouncilRequest) -> Co
     for wr in worker_responses:
         print(f"[Council] Worker: {wr['model']} (max_tokens: {get_max_tokens_for_model(wr['model'], request.max_tokens)})")
 
-    # Step 2: Synthesis prompt (includes the original conversation and the worker responses)
-    # Build a summary of the conversation for the judge
+    # Step 2: Synthesis prompt
     conv_text = "\n".join([f"{m['role']}: {m['content']}" for m in request.messages])
     synthesis_prompt = f"""
 Original conversation history:
@@ -193,26 +313,30 @@ Instructions:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 # -------------------------------------------------------------------------
 # Simple test endpoints (direct curl) - now accept messages
 # -------------------------------------------------------------------------
 @app.post("/v1/normal")
 async def normal_route(request: CouncilRequest):
-    return await run_council(NORMAL_WORKERS, NORMAL_JUDGE, request)
+    workers_runtime = [worker_to_runtime(w) for w in NORMAL_WORKERS]
+    judge_runtime = judge_to_runtime(NORMAL_JUDGE)
+    return await run_council(workers_runtime, judge_runtime, request)
 
 @app.post("/v1/advanced")
 async def advanced_route(request: CouncilRequest):
-    return await run_council(ADVANCED_WORKERS, ADVANCED_JUDGE, request)
+    workers_runtime = [worker_to_runtime(w) for w in ADVANCED_WORKERS]
+    judge_runtime = judge_to_runtime(ADVANCED_JUDGE)
+    return await run_council(workers_runtime, judge_runtime, request)
 
 # -------------------------------------------------------------------------
-# OpenAI‑compatible streaming endpoints (for LiteLLM / Open WebUI)
+# OpenAI-compatible streaming endpoints
 # -------------------------------------------------------------------------
 @app.post("/v1/normal/chat/completions")
 async def normal_chat_completions(request: Request):
     body = await request.json()
     stream = body.get("stream", False)
     messages = body.get("messages", [])
-    # Extract system prompt from messages if present, otherwise use default
     system_prompt = "You are a helpful assistant."
     filtered_messages = []
     for msg in messages:
@@ -223,7 +347,9 @@ async def normal_chat_completions(request: Request):
     max_tokens = body.get("max_tokens", 128000)
     temperature = body.get("temperature", 0.7)
 
-    result = await run_council(NORMAL_WORKERS, NORMAL_JUDGE, CouncilRequest(
+    workers_runtime = [worker_to_runtime(w) for w in NORMAL_WORKERS]
+    judge_runtime = judge_to_runtime(NORMAL_JUDGE)
+    result = await run_council(workers_runtime, judge_runtime, CouncilRequest(
         messages=filtered_messages,
         system_prompt=system_prompt,
         max_tokens=max_tokens,
@@ -260,7 +386,9 @@ async def advanced_chat_completions(request: Request):
     max_tokens = body.get("max_tokens", 128000)
     temperature = body.get("temperature", 0.7)
 
-    result = await run_council(ADVANCED_WORKERS, ADVANCED_JUDGE, CouncilRequest(
+    workers_runtime = [worker_to_runtime(w) for w in ADVANCED_WORKERS]
+    judge_runtime = judge_to_runtime(ADVANCED_JUDGE)
+    result = await run_council(workers_runtime, judge_runtime, CouncilRequest(
         messages=filtered_messages,
         system_prompt=system_prompt,
         max_tokens=max_tokens,

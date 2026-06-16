@@ -16,18 +16,68 @@
     </header>
 
     <div class="dashboard">
-        <!-- Left Panel: Council Config -->
+        <!-- Left Panel: Council Config with Model Swapper -->
         <section class="panel panel-config">
             <h2>⚙️ Council Configuration</h2>
+            <div class="swap-actions-top">
+                <button id="refreshModelsBtn" class="btn btn-secondary">🔄 Refresh Models</button>
+                <span id="swapStatus" class="swap-status"></span>
+            </div>
             <div id="normalCouncil" class="council-card">
                 <h3>Normal Council</h3>
                 <div class="worker-list" id="normalWorkers"></div>
                 <div class="judge-info" id="normalJudge"></div>
+                <div class="swap-section">
+                    <div class="swap-row">
+                        <label>Worker 1:</label>
+                        <select id="swapNormalWorker0" class="model-select"></select>
+                    </div>
+                    <div class="swap-row">
+                        <label>Worker 2:</label>
+                        <select id="swapNormalWorker1" class="model-select"></select>
+                    </div>
+                    <div class="swap-row">
+                        <label>Worker 3:</label>
+                        <select id="swapNormalWorker2" class="model-select"></select>
+                    </div>
+                    <div class="swap-row">
+                        <label>Judge:</label>
+                        <select id="swapNormalJudge" class="model-select"></select>
+                        <label class="thinking-label">
+                            <input type="checkbox" id="swapNormalJudgeThinking"> Thinking
+                        </label>
+                    </div>
+                </div>
             </div>
             <div id="advancedCouncil" class="council-card">
                 <h3>Advanced Council</h3>
                 <div class="worker-list" id="advancedWorkers"></div>
                 <div class="judge-info" id="advancedJudge"></div>
+                <div class="swap-section">
+                    <div class="swap-row">
+                        <label>Worker 1:</label>
+                        <select id="swapAdvancedWorker0" class="model-select"></select>
+                    </div>
+                    <div class="swap-row">
+                        <label>Worker 2:</label>
+                        <select id="swapAdvancedWorker1" class="model-select"></select>
+                    </div>
+                    <div class="swap-row">
+                        <label>Worker 3:</label>
+                        <select id="swapAdvancedWorker2" class="model-select"></select>
+                    </div>
+                    <div class="swap-row">
+                        <label>Judge:</label>
+                        <select id="swapAdvancedJudge" class="model-select"></select>
+                        <label class="thinking-label">
+                            <input type="checkbox" id="swapAdvancedJudgeThinking"> Thinking
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="swap-actions">
+                <button id="applySwapBtn" class="btn btn-primary">✓ Apply Changes</button>
+                <button id="resetSwapBtn" class="btn btn-danger">↻ Reset to Defaults</button>
             </div>
         </section>
 

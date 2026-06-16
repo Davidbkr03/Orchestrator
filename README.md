@@ -31,7 +31,13 @@ cd Orchestrator
 
 ### 2. Configure environment variables
 
-Create a `.env` file in the project root with your API keys:
+Copy the example file and add your API keys:
+
+```bash
+cp .env.example .env
+```
+
+Edit the `.env` file with your keys:
 
 ```env
 DEEPSEEK_API_KEY=your_deepseek_key
@@ -43,7 +49,7 @@ GEMINI_API_KEY=your_gemini_key
 
 ```bash
 docker build -t fusion-orchestrator .
-docker run -p 8000:8000 --env-file .env fusion-orchestrator
+docker run -d -p 8000:8000 --env-file .env fusion-orchestrator
 ```
 
 The API will be available at `http://localhost:8000`. The Web UI can be accessed at `http://localhost:8000/ui`.
@@ -83,4 +89,3 @@ curl -X POST http://localhost:8000/v1/normal/chat/completions \
 ```
 
 ## Project Structure
-# Orchestrator

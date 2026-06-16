@@ -51,7 +51,7 @@ body {
 
 .dashboard {
     display: grid;
-    grid-template-columns: 320px 1fr 280px;
+    grid-template-columns: 380px 1fr 280px;
     gap: 16px;
     padding: 16px 24px;
     height: calc(100vh - 80px);
@@ -116,6 +116,129 @@ body {
     font-size: 11px;
     margin-left: 4px;
     color: #8b949e;
+}
+
+/* Model swapper styles */
+.swap-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #21262d;
+}
+
+.swap-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.swap-row label {
+    min-width: 60px;
+    color: #8b949e;
+}
+
+.model-select {
+    flex: 1;
+    background: #0d1117;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+
+.model-select:focus {
+    outline: none;
+    border-color: #58a6ff;
+}
+
+.thinking-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #8b949e;
+    white-space: nowrap;
+}
+
+.thinking-label input[type="checkbox"] {
+    accent-color: #58a6ff;
+}
+
+.swap-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.swap-actions-top {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #c9d1d9;
+    transition: background 0.2s;
+}
+
+.btn:hover {
+    opacity: 0.9;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: #238636;
+    border-color: #238636;
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: #2ea043;
+}
+
+.btn-danger {
+    background: #da3633;
+    border-color: #da3633;
+    color: #fff;
+}
+
+.btn-danger:hover {
+    background: #f85149;
+}
+
+.btn-secondary {
+    background: #21262d;
+    color: #8b949e;
+}
+
+.swap-status {
+    font-size: 12px;
+    margin-left: 12px;
+    color: #8b949e;
+}
+
+.swap-status.success {
+    color: #3fb950;
+}
+
+.swap-status.error {
+    color: #f85149;
+}
+
+.swap-status.warning {
+    color: #d29922;
 }
 
 .query-form {
